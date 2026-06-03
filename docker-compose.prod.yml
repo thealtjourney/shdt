@@ -1,0 +1,144 @@
+# ─────────────────────────────────────────────────────────────────
+# SHDT — local production-mirror stack
+#
+# This compose file deliberately mirrors the Azure target architecture
+# so the same images and same env-var contract work in both places:
+#
+#   docker compose -f docker-compose.prod.yml up   ←  this file
+#   az containerapp up                              ←  Azure (via Bicep)
+#
+# What runs:
+#   * postgis      — Postgres 16 + PostGIS 3.4 (Azure equivalent: Flexible Server)
+#   * backend      — FastAPI (Azure equivalent: Container App)
+#   * frontend     — nginx serving Vite build (Azure equivalent: Static Web App)
+#
+# What is NOT modelled locally:
+#   * Key Vault           (uses .env files via DotenvSecrets / EnvSecrets)
+#   * Azure Blob Storage  (uses LocalFilesystemStorage on a mounted volume)
+#   * Application Insights (logs go to docker logs / stdout)
+#   * Front Door / WAF    (front the stack with your own reverse proxy if needed)
+#
+# Setup:
+#   1. cp .env.production.example .env
+#   2. Edit .env and set DB_PASSWORD, SECRET_KEY, CORS_ALLOW_ORIGINS at minimum
+#   3. docker compose -f docker-compose.prod.yml up --build
+#   4. Visit http://localhost:8080 (frontend) and http://localhost:8000/healthz (backend)
+# ─────────────────────────────────────────────────────────────────
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: shdt-prod-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-shdt}
+      POSTGRES_USER: ${DB_USER:-shdt}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./database/migrations:/docker-entrypoint-initdb.d/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-shdt} -d ${DB_NAME:-shdt}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - shdt
+    # Don't expose 5432 to the host by default — backend reaches it on the network
+    # Uncomment to debug locally:
+    # ports:
+    #   - "5432:5432"
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+        GIT_COMMIT: ${GIT_COMMIT:-local}
+    image: shdt-backend:${APP_VERSION:-local}
+    container_name: shdt-prod-backend
+    environment:
+      DEPLOY_ENV: prod
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      GIT_COMMIT: ${GIT_COMMIT:-local}
+
+      # Config providers — env-mode in containers (no .env file read)
+      SECRETS_BACKEND: env
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_LOCAL_DIR: /var/shdt/storage
+      HTTP_BACKEND: httpx
+
+      # Connection string — built from individual vars so .env can hold
+      # only DB_PASSWORD and CORS_ALLOW_ORIGINS as the genuine secrets
+      DATABASE_URL: postgresql://${DB_USER:-shdt}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-shdt}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_POOL_MAX_OVERFLOW: ${DB_POOL_MAX_OVERFLOW:-20}
+      DB_POOL_RECYCLE_S: ${DB_POOL_RECYCLE_S:-1800}
+
+      # CORS — comma-separated. In prod set to your real frontend URL.
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:8080}
+
+      # Auth
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+    volumes:
+      # Local-FS storage volume (mirrors Azure Blob in prod)
+      - storage_data:/var/shdt/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - shdt
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+        GIT_COMMIT: ${GIT_COMMIT:-local}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    image: shdt-frontend:${APP_VERSION:-local}
+    container_name: shdt-prod-frontend
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:8000/api}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      APP_ENV: ${APP_ENV:-prod}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - shdt
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+
+volumes:
+  postgres_data:
+    driver: local
+  storage_data:
+    driver: local
+
+networks:
+  shdt:
+    driver: bridge

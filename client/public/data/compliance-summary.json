@@ -1,0 +1,14 @@
+{
+  "status": "success",
+  "data": {
+    "total_properties": 9,
+    "regimes": [
+      { "name": "Gas safety", "compliant": 9, "due_soon": 0, "overdue": 0 },
+      { "name": "Electrical (EICR)", "compliant": 9, "due_soon": 0, "overdue": 0 },
+      { "name": "Fire risk assessment", "compliant": 9, "due_soon": 0, "overdue": 0 },
+      { "name": "Asbestos", "compliant": 9, "due_soon": 0, "overdue": 0 },
+      { "name": "Legionella", "compliant": 9, "due_soon": 0, "overdue": 0 }
+    ],
+    "overall_compliance_pct": 100.0
+  }
+}

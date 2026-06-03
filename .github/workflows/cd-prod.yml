@@ -1,0 +1,241 @@
+name: CD — Production
+
+# Triggers:
+#  * Manual dispatch (preferred for first deploy and any infra changes)
+#  * Push to main (deploy app code only — infra is gated behind workflow_dispatch)
+#  * Tag push (v*.*.*) — release deploy
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_infra:
+        description: 'Apply Bicep infrastructure changes'
+        required: true
+        type: boolean
+        default: false
+      deploy_backend:
+        description: 'Build & deploy backend Container App'
+        required: true
+        type: boolean
+        default: true
+      deploy_frontend:
+        description: 'Build & deploy frontend Static Web App'
+        required: true
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'client/**'
+      - '.github/workflows/cd-prod.yml'
+
+concurrency:
+  group: cd-prod
+  cancel-in-progress: false  # Don't interrupt an in-flight deploy
+
+permissions:
+  id-token: write   # Required for Azure OIDC federated credential
+  contents: read
+
+env:
+  AZURE_LOCATION: uksouth
+  AZURE_RG: rg-shdt-prod-uks
+  APP_NAME: shdt
+  ENVIRONMENT: prod
+  BACKEND_APP_NAME: ca-shdt-prod-uks-api
+  BACKEND_IMAGE_REPO: shdt/backend
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────
+  # 1. Optionally apply infrastructure (Bicep)
+  # ─────────────────────────────────────────────────────────────
+  infra:
+    name: Apply infrastructure (Bicep)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_infra
+    outputs:
+      acr_login_server: ${{ steps.deploy.outputs.acrLoginServer }}
+      backend_fqdn: ${{ steps.deploy.outputs.backendFqdn }}
+      kv_name: ${{ steps.deploy.outputs.keyVaultName }}
+      mi_client_id: ${{ steps.deploy.outputs.managedIdentityClientId }}
+      swa_token: ${{ steps.deploy.outputs.staticWebAppDeploymentToken }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Bicep
+        id: deploy
+        uses: azure/cli@v2
+        env:
+          ADMIN_PRINCIPAL_ID: ${{ secrets.ADMIN_PRINCIPAL_ID }}
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        with:
+          azcliversion: latest
+          inlineScript: |
+            set -euo pipefail
+            outputs=$(az deployment sub create \
+              --name "shdt-${ENVIRONMENT}-$(date +%Y%m%d-%H%M%S)" \
+              --location "${AZURE_LOCATION}" \
+              --template-file infra/bicep/main.bicep \
+              --parameters infra/bicep/parameters/prod.bicepparam \
+              --parameters adminPrincipalId="${ADMIN_PRINCIPAL_ID}" \
+              --parameters postgresAdminPassword="${POSTGRES_ADMIN_PASSWORD}" \
+              --query 'properties.outputs' \
+              -o json)
+
+            echo "$outputs" | jq -r '
+              "acrLoginServer=\(.acrLoginServer.value)\n
+               backendFqdn=\(.backendFqdn.value)\n
+               keyVaultName=\(.keyVaultName.value)\n
+               managedIdentityClientId=\(.managedIdentityClientId.value)\n
+               staticWebAppDeploymentToken=\(.staticWebAppDeploymentToken.value)"
+            ' >> "$GITHUB_OUTPUT"
+
+  # ─────────────────────────────────────────────────────────────
+  # 2. Build + push backend image to ACR, then update the Container App
+  # ─────────────────────────────────────────────────────────────
+  backend:
+    name: Build & deploy backend
+    runs-on: ubuntu-latest
+    if: ${{ always() && (needs.infra.result == 'skipped' || needs.infra.result == 'success') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_backend)) }}
+    needs: [infra]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve ACR name
+        id: acr
+        run: |
+          set -euo pipefail
+          ACR_NAME=$(az acr list -g "${AZURE_RG}" --query '[0].name' -o tsv)
+          ACR_LOGIN=$(az acr show -n "$ACR_NAME" --query loginServer -o tsv)
+          echo "name=$ACR_NAME"   >> "$GITHUB_OUTPUT"
+          echo "login=$ACR_LOGIN" >> "$GITHUB_OUTPUT"
+
+      - name: Login to ACR
+        run: az acr login --name "${{ steps.acr.outputs.name }}"
+
+      - name: Set image tag
+        id: tag
+        run: |
+          if [[ "${GITHUB_REF}" =~ ^refs/tags/v ]]; then
+            TAG="${GITHUB_REF##refs/tags/v}"
+          else
+            TAG="$(date +%Y%m%d)-${GITHUB_SHA::7}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Built tag: $TAG"
+
+      - name: Build backend image
+        run: |
+          docker build \
+            --build-arg APP_VERSION="${{ steps.tag.outputs.tag }}" \
+            --build-arg GIT_COMMIT="${GITHUB_SHA}" \
+            -t "${{ steps.acr.outputs.login }}/${BACKEND_IMAGE_REPO}:${{ steps.tag.outputs.tag }}" \
+            -t "${{ steps.acr.outputs.login }}/${BACKEND_IMAGE_REPO}:latest" \
+            ./server
+
+      - name: Push backend image
+        run: |
+          docker push "${{ steps.acr.outputs.login }}/${BACKEND_IMAGE_REPO}:${{ steps.tag.outputs.tag }}"
+          docker push "${{ steps.acr.outputs.login }}/${BACKEND_IMAGE_REPO}:latest"
+
+      - name: Update Container App revision
+        run: |
+          az containerapp update \
+            --name "${BACKEND_APP_NAME}" \
+            --resource-group "${AZURE_RG}" \
+            --image "${{ steps.acr.outputs.login }}/${BACKEND_IMAGE_REPO}:${{ steps.tag.outputs.tag }}" \
+            --revision-suffix "v${{ steps.tag.outputs.tag }}"
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          FQDN=$(az containerapp show -n "${BACKEND_APP_NAME}" -g "${AZURE_RG}" --query 'properties.configuration.ingress.fqdn' -o tsv)
+          echo "Backend FQDN: $FQDN"
+          for i in {1..30}; do
+            if curl --silent --fail "https://$FQDN/healthz" >/dev/null; then
+              echo "Backend healthy"
+              curl -s "https://$FQDN/version" | jq .
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Backend did not become healthy in time" >&2
+          exit 1
+
+  # ─────────────────────────────────────────────────────────────
+  # 3. Build the frontend and push to Static Web Apps
+  # ─────────────────────────────────────────────────────────────
+  frontend:
+    name: Build & deploy frontend
+    runs-on: ubuntu-latest
+    if: ${{ always() && (needs.infra.result == 'skipped' || needs.infra.result == 'success') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_frontend)) }}
+    needs: [infra, backend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Resolve backend URL
+        id: backend
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            FQDN=$(az containerapp show -n "${BACKEND_APP_NAME}" -g "${AZURE_RG}" --query 'properties.configuration.ingress.fqdn' -o tsv)
+            echo "url=https://${FQDN}" >> "$GITHUB_OUTPUT"
+
+      - name: Install
+        working-directory: client
+        run: npm ci
+
+      - name: Build (with API URL baked in)
+        working-directory: client
+        env:
+          VITE_API_BASE_URL: ${{ steps.backend.outputs.url }}/api
+        run: npm run build
+
+      - name: Resolve SWA deployment token
+        id: swa
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            TOKEN=$(az staticwebapp secrets list \
+              -n "swa-shdt-prod-uks" \
+              --query 'properties.apiKey' -o tsv)
+            echo "::add-mask::$TOKEN"
+            echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa.outputs.token }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: 'upload'
+          app_location: 'client'
+          output_location: 'dist'
+          skip_app_build: true
+          skip_api_build: true

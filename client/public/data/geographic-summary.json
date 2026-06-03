@@ -1,0 +1,19 @@
+{
+  "status": "success",
+  "data": {
+    "by_local_authority": [
+      { "name": "Charnwood", "count": 3 },
+      { "name": "North West Leicestershire", "count": 1 },
+      { "name": "Boston", "count": 1 },
+      { "name": "Tewkesbury", "count": 1 },
+      { "name": "York", "count": 1 },
+      { "name": "Calderdale", "count": 1 },
+      { "name": "Kingston upon Hull, City of", "count": 1 }
+    ],
+    "by_region": [
+      { "name": "East Midlands", "count": 5 },
+      { "name": "Yorkshire and The Humber", "count": 3 },
+      { "name": "South West", "count": 1 }
+    ]
+  }
+}

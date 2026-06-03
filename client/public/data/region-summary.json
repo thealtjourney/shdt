@@ -1,0 +1,8 @@
+{
+  "status": "success",
+  "data": [
+    { "region": "East Midlands", "count": 5, "avg_condition": 3.0 },
+    { "region": "Yorkshire and The Humber", "count": 3, "avg_condition": 2.8 },
+    { "region": "South West", "count": 1, "avg_condition": 2.8 }
+  ]
+}

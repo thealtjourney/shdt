@@ -1,0 +1,342 @@
+"""
+Quality monitoring and alerting for enrichment data.
+Tracks completeness, freshness, accuracy, and generates alerts.
+"""
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Tuple
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, func
+
+from app.models import Property, EnrichmentData, EnrichmentLog, QualityAlert
+from app.database import SessionLocal
+
+logger = logging.getLogger(__name__)
+
+
+class QualityMonitor:
+    """Monitor data quality metrics and alert on issues."""
+
+    # Alert thresholds
+    ALERT_THRESHOLDS = {
+        'epc_match_rate': 0.80,  # Alert if < 80%
+        'overall_completeness': 0.70,  # Alert if < 70%
+        'freshness_days': 30,  # Alert if data older than 30 days
+        'error_rate': 0.05,  # Alert if > 5% error rate
+        'coverage_by_provider': 0.60  # Alert if < 60% coverage
+    }
+
+    def __init__(self, db: Session = None):
+        self.db = db or SessionLocal()
+        self._session_created = db is None
+
+    def compute_metrics(self) -> Dict[str, Any]:
+        """
+        Compute comprehensive quality metrics across all enrichment data.
+        
+        Returns:
+            - overall_score: 0-100 quality score
+            - completeness: Per-field completeness percentages
+            - freshness: Per-provider data freshness
+            - accuracy: EPC match confidence and other accuracy metrics
+            - alerts: List of active alerts
+        """
+        try:
+            metrics = {
+                'timestamp': datetime.utcnow().isoformat(),
+                'overall_score': 0,
+                'completeness': self._compute_completeness(),
+                'freshness': self._compute_freshness(),
+                'accuracy': self._compute_accuracy(),
+                'provider_health': self._compute_provider_health(),
+                'alerts': self._check_alerts()
+            }
+
+            # Calculate overall score (0-100)
+            completeness_score = sum(metrics['completeness'].values()) / max(len(metrics['completeness']), 1)
+            freshness_scores = [f.get('score', 0) for f in metrics['freshness'].values()]
+            freshness_score = sum(freshness_scores) / max(len(freshness_scores), 1)
+            health_scores = [h.get('health_score', 0) for h in metrics['provider_health'].values()]
+            health_score = sum(health_scores) / max(len(health_scores), 1)
+
+            metrics['overall_score'] = int(
+                completeness_score * 0.4 + 
+                freshness_score * 0.35 + 
+                health_score * 0.25
+            )
+
+            return metrics
+        finally:
+            if self._session_created:
+                self.db.close()
+
+    def _compute_completeness(self) -> Dict[str, float]:
+        """
+        Compute field-level completeness percentages.
+        
+        Returns:
+            Dict of field -> completeness_percentage
+        """
+        try:
+            fields = [
+                'epc_rating', 'current_energy_consumption', 'potential_energy_consumption',
+                'heating_type', 'build_year', 'property_age', 'floor_area',
+                'number_of_bedrooms', 'postcode', 'co2_emissions', 'fuel_poverty_flag'
+            ]
+
+            total_properties = self.db.query(func.count(Property.id)).filter(
+                Property.active == True
+            ).scalar() or 1
+
+            completeness = {}
+            for field in fields:
+                # Count non-null values for the field
+                count = self.db.query(func.count(Property.id)).filter(
+                    and_(
+                        Property.active == True,
+                        getattr(Property, field).isnot(None)
+                    )
+                ).scalar() or 0
+
+                completeness[field] = (count / total_properties * 100) if total_properties > 0 else 0
+
+            return completeness
+        except Exception as e:
+            logger.error(f"Failed to compute completeness metrics: {e}")
+            return {}
+
+    def _compute_freshness(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Compute data freshness by provider.
+        Data freshness score: 100% if < 7 days old, linear decline to 0% at >90 days.
+        
+        Returns:
+            Dict of provider -> {last_update, days_old, score}
+        """
+        try:
+            providers = ['epc', 'postcodes', 'flood', 'crime', 'imd', 'census', 'land_registry']
+            freshness = {}
+            now = datetime.utcnow()
+
+            for provider in providers:
+                # Get most recent enrichment log
+                latest_log = self.db.query(EnrichmentLog).filter(
+                    EnrichmentLog.provider == provider
+                ).order_by(EnrichmentLog.run_timestamp.desc()).first()
+
+                if latest_log:
+                    days_old = (now - latest_log.run_timestamp).days
+                    
+                    # Freshness scoring: 100% at 0 days, linear decline
+                    if days_old <= 7:
+                        score = 100
+                    elif days_old <= 90:
+                        score = max(0, 100 - (days_old - 7) * (100 / 83))
+                    else:
+                        score = 0
+
+                    freshness[provider] = {
+                        'last_update': latest_log.run_timestamp.isoformat(),
+                        'days_old': days_old,
+                        'score': int(score),
+                        'status': 'fresh' if score >= 80 else 'aging' if score >= 50 else 'stale'
+                    }
+                else:
+                    freshness[provider] = {
+                        'last_update': None,
+                        'days_old': None,
+                        'score': 0,
+                        'status': 'no_data'
+                    }
+
+            return freshness
+        except Exception as e:
+            logger.error(f"Failed to compute freshness metrics: {e}")
+            return {}
+
+    def _compute_accuracy(self) -> Dict[str, Any]:
+        """
+        Compute accuracy metrics including EPC match confidence.
+        
+        Returns:
+            Accuracy metrics with confidence distributions
+        """
+        try:
+            # EPC match confidence distribution
+            epc_data = self.db.query(EnrichmentData).filter(
+                EnrichmentData.provider == 'epc'
+            ).all()
+
+            confidence_buckets = {
+                'high': 0,      # 90-100%
+                'medium': 0,    # 70-90%
+                'low': 0,       # 50-70%
+                'very_low': 0   # <50%
+            }
+
+            for data in epc_data:
+                confidence = data.data.get('match_confidence', 0)
+                if confidence >= 0.9:
+                    confidence_buckets['high'] += 1
+                elif confidence >= 0.7:
+                    confidence_buckets['medium'] += 1
+                elif confidence >= 0.5:
+                    confidence_buckets['low'] += 1
+                else:
+                    confidence_buckets['very_low'] += 1
+
+            total = sum(confidence_buckets.values()) or 1
+            confidence_distribution = {
+                k: (v / total * 100) for k, v in confidence_buckets.items()
+            }
+
+            return {
+                'epc_match_confidence': confidence_distribution,
+                'epc_high_confidence_rate': (confidence_buckets['high'] + confidence_buckets['medium']) / total * 100
+            }
+        except Exception as e:
+            logger.error(f"Failed to compute accuracy metrics: {e}")
+            return {}
+
+    def _compute_provider_health(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Compute health score per provider based on recent runs.
+        
+        Returns:
+            Dict of provider -> health metrics
+        """
+        try:
+            providers = ['epc', 'postcodes', 'flood', 'crime', 'imd', 'census', 'land_registry']
+            health = {}
+
+            for provider in providers:
+                # Get last 10 runs
+                recent_runs = self.db.query(EnrichmentLog).filter(
+                    EnrichmentLog.provider == provider
+                ).order_by(EnrichmentLog.run_timestamp.desc()).limit(10).all()
+
+                if not recent_runs:
+                    health[provider] = {
+                        'health_score': 0,
+                        'status': 'no_runs',
+                        'recent_success_rate': None,
+                        'avg_error_rate': None
+                    }
+                    continue
+
+                total_success = sum(r.success_count for r in recent_runs)
+                total_count = sum(r.total_count for r in recent_runs)
+                total_errors = sum(r.error_count for r in recent_runs)
+
+                success_rate = (total_success / total_count * 100) if total_count > 0 else 0
+                error_rate = (total_errors / total_count * 100) if total_count > 0 else 0
+
+                # Health score: based on success rate
+                if success_rate >= 95:
+                    health_score = 100
+                elif success_rate >= 85:
+                    health_score = 80
+                elif success_rate >= 70:
+                    health_score = 60
+                else:
+                    health_score = 40
+
+                health[provider] = {
+                    'health_score': health_score,
+                    'status': 'healthy' if health_score >= 80 else 'degraded' if health_score >= 60 else 'critical',
+                    'recent_success_rate': round(success_rate, 1),
+                    'recent_error_rate': round(error_rate, 1),
+                    'runs_in_period': len(recent_runs)
+                }
+
+            return health
+        except Exception as e:
+            logger.error(f"Failed to compute provider health: {e}")
+            return {}
+
+    def _check_alerts(self) -> List[str]:
+        """
+        Check quality metrics against alert thresholds.
+        
+        Returns:
+            List of active alert messages
+        """
+        alerts = []
+        try:
+            # Check EPC match rate
+            epc_data_count = self.db.query(func.count(EnrichmentData.id)).filter(
+                EnrichmentData.provider == 'epc'
+            ).scalar() or 1
+
+            high_confidence = self.db.query(func.count(EnrichmentData.id)).filter(
+                and_(
+                    EnrichmentData.provider == 'epc',
+                    EnrichmentData.data['match_confidence'].astext.cast(float) >= 0.8
+                )
+            ).scalar() or 0
+
+            epc_rate = high_confidence / epc_data_count if epc_data_count > 0 else 0
+            if epc_rate < self.ALERT_THRESHOLDS['epc_match_rate']:
+                alerts.append(
+                    f"EPC match rate low: {epc_rate*100:.1f}% < {self.ALERT_THRESHOLDS['epc_match_rate']*100:.0f}%"
+                )
+
+            # Check freshness by provider
+            for provider in ['epc', 'postcodes', 'flood', 'crime']:
+                latest = self.db.query(EnrichmentLog).filter(
+                    EnrichmentLog.provider == provider
+                ).order_by(EnrichmentLog.run_timestamp.desc()).first()
+
+                if latest:
+                    days_old = (datetime.utcnow() - latest.run_timestamp).days
+                    if days_old > self.ALERT_THRESHOLDS['freshness_days']:
+                        alerts.append(
+                            f"{provider} data stale: last updated {days_old} days ago"
+                        )
+
+            # Check error rates from recent runs
+            for provider in ['epc', 'postcodes', 'flood', 'crime', 'imd']:
+                recent = self.db.query(EnrichmentLog).filter(
+                    EnrichmentLog.provider == provider
+                ).order_by(EnrichmentLog.run_timestamp.desc()).first()
+
+                if recent and recent.total_count > 0:
+                    error_rate = recent.error_count / recent.total_count
+                    if error_rate > self.ALERT_THRESHOLDS['error_rate']:
+                        alerts.append(
+                            f"{provider} high error rate: {error_rate*100:.1f}%"
+                        )
+
+        except Exception as e:
+            logger.error(f"Failed to check alerts: {e}")
+            alerts.append(f"Error checking alerts: {str(e)}")
+
+        return alerts
+
+    def get_quality_report(self) -> Dict[str, Any]:
+        """Get comprehensive quality report."""
+        return self.compute_metrics()
+
+    def store_metrics(self, metrics: Dict[str, Any]) -> bool:
+        """Store quality metrics for historical tracking."""
+        try:
+            # Implementation would store to quality_metrics table
+            logger.info(f"Quality metrics: score={metrics['overall_score']}, alerts={len(metrics['alerts'])}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to store metrics: {e}")
+            return False
+
+    def __del__(self):
+        """Cleanup database session."""
+        if self._session_created and self.db:
+            self.db.close()
+
+
+# Global monitor instance
+quality_monitor = None
+
+
+def get_monitor(db: Session = None) -> QualityMonitor:
+    """Get or create quality monitor instance."""
+    return QualityMonitor(db)

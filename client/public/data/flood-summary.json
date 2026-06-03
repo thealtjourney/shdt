@@ -1,0 +1,16 @@
+{
+  "status": "success",
+  "data": {
+    "total_properties": 9,
+    "high_risk_rivers_seas": 6,
+    "medium_risk_rivers_seas": 1,
+    "low_risk_rivers_seas": 1,
+    "very_low_risk_rivers_seas": 0,
+    "unknown_rivers_seas": 1,
+    "high_risk_surface": 5,
+    "active_warnings": 7,
+    "in_flood_zone_3": 6,
+    "in_flood_zone_2": 1,
+    "in_flood_zone_1": 1
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "status": "success",
+  "data": {
+    "distribution": [
+      { "band": "A", "count": 0, "percentage": 0 },
+      { "band": "B", "count": 0, "percentage": 0 },
+      { "band": "C", "count": 2, "percentage": 22.2 },
+      { "band": "D", "count": 4, "percentage": 44.4 },
+      { "band": "E", "count": 3, "percentage": 33.3 },
+      { "band": "F", "count": 0, "percentage": 0 },
+      { "band": "G", "count": 0, "percentage": 0 }
+    ],
+    "total": 9,
+    "target_year": 2030,
+    "target_band": "C",
+    "current_at_target_or_above": 2,
+    "target_progress_pct": 22.2
+  }
+}

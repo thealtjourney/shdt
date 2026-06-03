@@ -1,0 +1,186 @@
+# ─────────────────────────────────────────────
+# SHDT — .gitignore
+# ─────────────────────────────────────────────
+
+# ── Secrets & environment files (NEVER COMMIT) ──
+.env
+.env.*
+!.env.example
+!.env.production.example
+!server/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.json
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+
+# mypy / ruff
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# ── Node / JavaScript ──
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnp/
+.pnp.js
+.pnp.cjs
+
+# Build outputs
+client/dist/
+client/build/
+client/out/
+.next/
+.nuxt/
+.svelte-kit/
+
+# ── Vite ──
+*.local
+
+# ── IDE / editor files ──
+.idea/
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.project
+.classpath
+.settings/
+
+# ── OS files ──
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ── Database / data ──
+*.sqlite
+*.sqlite3
+*.db
+server/storage_data/
+server/db/backup/*.dump
+server/db/backup/*.sql.gz
+*.dump
+
+# Local cached data files (large; not source-controlled)
+server/data/*.csv
+server/data/*.xlsx
+data/*.csv
+data/*.xlsx
+*.osopendata.zip
+
+# ── Docker ──
+docker-compose.override.yml
+.docker/
+
+# ── Application runtime state ──
+.pid_*
+*.pid
+server/logs/
+logs/
+*.log
+
+# ── Azure / infrastructure ──
+# Bicep build outputs
+infra/bicep/**/*.json
+!infra/bicep/parameters/*.json
+.azure/
+
+# Service principal files (NEVER COMMIT)
+azure-credentials.json
+sp.json
+
+# ── Test artefacts ──
+client/coverage/
+.vitest-cache/
+__snapshots__/
+
+# ── Misc ──
+*.bak
+*.orig
+*.rej
+.cache/
+tmp/
+temp/
+
+# ── Large data files (not source) ──
+server/data/os_open_uprn/
+server/.tile_cache/
+server/storage_data/
+server/imd_2019.csv
+server/imd_2025.csv
+server/data/ofcom/*.csv
+
+# ── Runtime artefacts ──
+.pid_backend
+.pid_frontend
+server/pytest-cache-files-*/
+server/.pytest_cache/
+
+# ── Vercel ──
+.vercel/
+
+# ── Files we DO want tracked even when matching above ──
+!.github/
+!.github/workflows/

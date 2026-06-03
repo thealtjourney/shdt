@@ -1,0 +1,27 @@
+# Development & test dependencies for SHDT backend.
+# Install with: pip install -r requirements-dev.txt
+
+# Test framework
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pytest-cov==5.0.0
+
+# HTTP test client
+httpx==0.27.2
+
+# Mocking and fixtures
+pytest-mock==3.14.0
+
+# Migrations
+alembic==1.13.3
+
+# Linting / formatting
+ruff==0.6.9
+mypy==1.11.2
+
+# Optional: Azure SDK for prod-mode tests (kept here so dev installs are still light)
+# Add to a separate requirements-azure.txt when actually deploying:
+#   azure-identity
+#   azure-keyvault-secrets
+#   azure-storage-blob
+#   opencensus-ext-azure

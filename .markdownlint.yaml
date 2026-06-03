@@ -1,0 +1,20 @@
+# Reasonable defaults for SHDT markdown.
+# Keep most rules on; relax a few that conflict with normal prose.
+
+default: true
+
+# Allow long lines — readability in source > strict 80-col discipline
+MD013: false
+
+# Allow inline HTML (we use <details>, <summary>, etc. for collapsible sections)
+MD033: false
+
+# Allow duplicate headings (e.g. "Why" used in multiple sections)
+MD024:
+  siblings_only: true
+
+# Allow bare URLs (linked URLs in changelog-style docs)
+MD034: false
+
+# First line need not be a top-level header — many of our docs start with frontmatter or a title block
+MD041: false

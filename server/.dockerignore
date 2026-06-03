@@ -1,0 +1,46 @@
+# Don't copy these into the image
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local venvs
+venv/
+.venv/
+
+# Local env files (secrets)
+.env
+.env.*
+!.env.example
+
+# Tests don't need to ship in the runtime image
+tests/
+
+# Logs / runtime state
+logs/
+*.log
+.pid_*
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Local data caches
+data/
+storage_data/
+
+# Old archived / disabled files
+*.disabled
+*.bak
+
+# Docs that don't need to ship
+README*.md
+*.md
+!alembic/README.md

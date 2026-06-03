@@ -1,0 +1,145 @@
+{
+  "status": "success",
+  "data": {
+    "properties": [
+      {
+        "id": "prop-001",
+        "address": "14B Linkfield Road, Mountsorrel, Leicester",
+        "postcode": "LE12 7DL",
+        "latitude": 52.721658,
+        "longitude": -1.135251,
+        "flood_zone": "Zone 2",
+        "flood_risk_rivers_seas": "Medium",
+        "flood_risk_surface_water": "High",
+        "active_flood_warnings": 0,
+        "epc_rating": "D",
+        "property_type": "flat"
+      },
+      {
+        "id": "prop-002",
+        "address": "Memorial House, Whitwick Business Park",
+        "postcode": "LE67 4JP",
+        "latitude": 52.72713,
+        "longitude": -1.365531,
+        "flood_zone": "Zone 1",
+        "flood_risk_rivers_seas": "Low",
+        "flood_risk_surface_water": "Low",
+        "active_flood_warnings": 0,
+        "epc_rating": "C",
+        "property_type": "office"
+      },
+      {
+        "id": "prop-003",
+        "address": "4 King Street, Sileby",
+        "postcode": "LE12 7RX",
+        "latitude": 52.730735,
+        "longitude": -1.111732,
+        "flood_zone": "Zone 3",
+        "flood_risk_rivers_seas": "High",
+        "flood_risk_surface_water": "Medium",
+        "active_flood_warnings": 1,
+        "epc_rating": "D",
+        "property_type": "terraced"
+      },
+      {
+        "id": "prop-004",
+        "address": "27 Wood Brook Road, Loughborough",
+        "postcode": "LE11 1NJ",
+        "latitude": 52.780579,
+        "longitude": -1.199466,
+        "flood_zone": "Zone 3",
+        "flood_risk_rivers_seas": "High",
+        "flood_risk_surface_water": "High",
+        "active_flood_warnings": 0,
+        "epc_rating": "E",
+        "property_type": "semi-detached"
+      },
+      {
+        "id": "prop-005",
+        "address": "92 High Street, Kingston upon Hull",
+        "postcode": "HU1 2AE",
+        "latitude": 53.744054,
+        "longitude": -0.334105,
+        "flood_zone": "Zone 3",
+        "flood_risk_rivers_seas": "High",
+        "flood_risk_surface_water": "High",
+        "active_flood_warnings": 2,
+        "epc_rating": "D",
+        "property_type": "flat"
+      },
+      {
+        "id": "prop-006",
+        "address": "8 Witham Bank, Boston",
+        "postcode": "PE21 6JG",
+        "latitude": 52.976502,
+        "longitude": -0.016323,
+        "flood_zone": "Zone 3",
+        "flood_risk_rivers_seas": "High",
+        "flood_risk_surface_water": "Medium",
+        "active_flood_warnings": 1,
+        "epc_rating": "E",
+        "property_type": "terraced"
+      },
+      {
+        "id": "prop-007",
+        "address": "15 Mill Bank, Tewkesbury",
+        "postcode": "GL20 5TY",
+        "latitude": 51.984626,
+        "longitude": -2.162347,
+        "flood_zone": "Zone 3",
+        "flood_risk_rivers_seas": "High",
+        "flood_risk_surface_water": "High",
+        "active_flood_warnings": 1,
+        "epc_rating": "D",
+        "property_type": "semi-detached"
+      },
+      {
+        "id": "prop-008",
+        "address": "3 Skeldergate, York",
+        "postcode": "YO1 8SH",
+        "latitude": 53.959042,
+        "longitude": -1.082484,
+        "flood_zone": "Zone 3",
+        "flood_risk_rivers_seas": "High",
+        "flood_risk_surface_water": "Medium",
+        "active_flood_warnings": 0,
+        "epc_rating": "C",
+        "property_type": "flat"
+      },
+      {
+        "id": "prop-009",
+        "address": "Calder Cottages, Calder, Hebden Bridge",
+        "postcode": "HX7 6JG",
+        "latitude": 53.731579,
+        "longitude": -2.011059,
+        "flood_zone": "Zone 3",
+        "flood_risk_rivers_seas": "High",
+        "flood_risk_surface_water": "High",
+        "active_flood_warnings": 2,
+        "epc_rating": "E",
+        "property_type": "terraced"
+      }
+    ],
+    "summary": {
+      "total_properties": 9,
+      "total_with_coords": 9,
+      "zone_distribution": {
+        "Zone 1": 1,
+        "Zone 2": 1,
+        "Zone 3": 7
+      },
+      "surface_water_risk": {
+        "High": 5,
+        "Medium": 2,
+        "Low": 2
+      },
+      "river_sea_risk": {
+        "High": 7,
+        "Medium": 1,
+        "Low": 1
+      },
+      "properties_with_warnings": 4,
+      "total_active_warnings": 7
+    }
+  }
+}

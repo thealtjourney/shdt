@@ -1,0 +1,22 @@
+# Normalise line endings — text files use LF in the repo regardless of OS
+* text=auto eol=lf
+
+# Force binary handling for these
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+
+# Shell scripts always LF
+*.sh text eol=lf
+
+# Windows batch files always CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf

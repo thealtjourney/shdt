@@ -1,0 +1,11 @@
+{
+  "status": "success",
+  "data": {
+    "reported": [],
+    "triaged": [],
+    "in_progress": [],
+    "remediated": [],
+    "closed": []
+  },
+  "totals": { "reported": 0, "triaged": 0, "in_progress": 0, "remediated": 0, "closed": 0 }
+}
