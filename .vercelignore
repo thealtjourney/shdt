@@ -1,10 +1,10 @@
-server/
-database/
-infra/
-data/
-docs/
-nginx/
-venv/
+/server/
+/database/
+/infra/
+/data/
+/docs/
+/nginx/
+/venv/
 __pycache__/
 *.pyc
 docker-compose.yml
